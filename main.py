@@ -1,6 +1,16 @@
 import flet as ft
 from supabase import create_client, Client
 
+# ==========================================
+# حل جذري لتوافق الأيقونات والألوان والصور مع إصدار الأندرويد الحديث
+# ==========================================
+if hasattr(ft, "Icons"):
+    ft.icons = ft.Icons
+if hasattr(ft, "Colors"):
+    ft.colors = ft.Colors
+if not hasattr(ft, "ImageFit") and hasattr(ft, "BoxFit"):
+    ft.ImageFit = ft.BoxFit
+
 # ضع الـ URL والـ Key الخاص بمشروعك هنا
 SUPABASE_URL = 'https://paarkycuhrljagdiqkdo.supabase.co'
 SUPABASE_KEY = 'sb_publishable_IJDNFFyeIOxYyPXUJFjN4w_l9WIAxOP'
@@ -13,9 +23,29 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.scroll = ft.ScrollMode.AUTO
 
+    # دوال موحدة لفتح وإغلاق النوافذ والإشعارات في كل الإصدارات
     def show_snack(msg, color=ft.colors.GREEN):
-        page.overlay.append(ft.SnackBar(ft.Text(msg), bgcolor=color, open=True))
-        page.update()
+        snack = ft.SnackBar(ft.Text(msg), bgcolor=color, open=True)
+        if hasattr(page, "open"):
+            page.open(snack)
+        else:
+            page.overlay.append(snack)
+            page.update()
+
+    def open_dlg(dlg):
+        if hasattr(page, "open"):
+            page.open(dlg)
+        else:
+            page.dialog = dlg
+            dlg.open = True
+            page.update()
+
+    def close_dlg(dlg):
+        if hasattr(page, "close"):
+            page.close(dlg)
+        else:
+            dlg.open = False
+            page.update()
 
     def show_loading(title="جاري التحميل..."):
         page.clean()
@@ -192,29 +222,31 @@ def main(page: ft.Page):
             err.value = "جاري التحقق..."
             page.update()
             try:
-                # جلب الباسورد من الداتا بيز
                 res = supabase.table("admin_auth").select("password").eq("id", 1).execute()
                 real_pass = res.data[0]["password"] if res.data else "admin123"
             except Exception:
-                real_pass = "admin123" # الباسورد الافتراضي في حالة وجود خطأ
+                real_pass = "admin123"
 
             if pass_field.value == real_pass:
-                page.dialog.open = False
+                close_dlg(dlg)
                 load_admin_panel()
             else:
                 err.value = "كلمة المرور غير صحيحة!"
                 page.update()
 
-        dlg = ft.AlertDialog(title=ft.Text("تسجيل دخول الإدارة"), content=ft.Column([pass_field, err], tight=True),
-                             actions=[ft.ElevatedButton("دخول", on_click=verify)])
-        page.dialog = dlg
-        dlg.open = True
-        page.update()
+        dlg = ft.AlertDialog(
+            title=ft.Text("تسجيل دخول الإدارة"),
+            content=ft.Column([pass_field, err], tight=True),
+            actions=[
+                ft.TextButton("إلغاء", on_click=lambda _: close_dlg(dlg)),
+                ft.ElevatedButton("دخول", on_click=verify)
+            ]
+        )
+        open_dlg(dlg)
 
     # ==========================================
     # --- قسم تطبيق العملاء (User App) ---
     # ==========================================
-
     def show_project_dashboard(project):
         page.clean()
         progress_percent = int(project.get('progress', 0) * 100)
@@ -248,8 +280,8 @@ def main(page: ft.Page):
         page.update()
 
     def open_login_dialog(project):
-        user_field = ft.TextField(label="اسم المستخدم", icon=ft.icons.PERSON)
-        pass_field = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, icon=ft.icons.LOCK)
+        user_field = ft.TextField(label="اسم المستخدم", prefix_icon=ft.icons.PERSON)
+        pass_field = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK)
         error_text = ft.Text("", color=ft.colors.RED)
         def verify_login(e):
             error_text.value = "جاري التحقق..."
@@ -257,25 +289,23 @@ def main(page: ft.Page):
             try:
                 res = supabase.table("clients").select("*").eq("username", user_field.value.strip()).eq("password", pass_field.value.strip()).eq("project_id", project['project_id']).execute()
                 if res.data and len(res.data) > 0:
-                    page.dialog.open = False
+                    close_dlg(dlg)
                     show_project_dashboard(project)
                 else:
                     error_text.value = "البيانات غير صحيحة"
                     page.update()
             except Exception as ex:
-                error_text.value = "خطأ في الاتصال"
+                error_text.value = f"خطأ في الاتصال: {ex}"
                 page.update()
         dlg = ft.AlertDialog(
             title=ft.Text(f"دخول - {project.get('name', '')}", size=16),
             content=ft.Column([user_field, pass_field, error_text], tight=True),
             actions=[
-                ft.TextButton("إلغاء", on_click=lambda _: setattr(page.dialog, 'open', False) or page.update()),
+                ft.TextButton("إلغاء", on_click=lambda _: close_dlg(dlg)),
                 ft.ElevatedButton("دخول", on_click=verify_login, bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE)
             ],
         )
-        page.dialog = dlg
-        dlg.open = True
-        page.update()
+        open_dlg(dlg)
 
     def load_current_projects(e):
         show_loading("المشاريع الحالية")
@@ -405,7 +435,6 @@ def main(page: ft.Page):
             
             logo_url = company_data.get("logo_url", "")
             if logo_url:
-                # تم تكبير اللوجو هنا
                 page.add(ft.Container(height=20), ft.Image(src=logo_url, width=250, height=250, fit=ft.ImageFit.CONTAIN))
             else:
                 page.add(ft.Container(height=20), ft.Icon(ft.icons.APARTMENT, size=120, color=ft.colors.INDIGO_900))
@@ -437,7 +466,7 @@ def main(page: ft.Page):
                 page.add(ft.Container(height=10))
 
             page.add(
-                ft.ElevatedButton(text="استكشف مشاريعنا وخدماتنا", icon=ft.icons.EXPLORE, bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE, on_click=go_to_main_hub, height=55, width=300),
+                ft.ElevatedButton("استكشف مشاريعنا وخدماتنا", icon=ft.icons.EXPLORE, bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE, on_click=go_to_main_hub, height=55, width=300),
                 ft.Container(height=40)
             )
             page.update()
@@ -449,4 +478,7 @@ def main(page: ft.Page):
     load_intro_screen()
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    if hasattr(ft, "run"):
+        ft.run(main)
+    else:
+        ft.app(target=main)
