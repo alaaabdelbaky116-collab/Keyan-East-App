@@ -126,10 +126,16 @@ def main(page: ft.Page):
         # 5. خدمات
         s_title = ft.TextField(label="اسم الخدمة", width=300)
         s_details = ft.TextField(label="تفاصيل الخدمة", width=300, multiline=True)
+        s_img = ft.TextField(label="رابط صورة الخدمة (من Storage)", width=300)
         def add_srv(e):
             try:
-                supabase.table("services").insert({"title": s_title.value, "details": s_details.value}).execute()
+                supabase.table("services").insert({
+                    "title": s_title.value,
+                    "details": s_details.value,
+                    "image_url": s_img.value
+                }).execute()
                 show_snack("تم إضافة الخدمة!")
+                s_title.value = s_details.value = s_img.value = ""
                 page.update()
             except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
 
@@ -192,9 +198,9 @@ def main(page: ft.Page):
                 ft.Divider(),
                 
                 ft.Text("5. الخدمات", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
-                ft.Row([s_title, s_details], wrap=True),
+                ft.Row([s_title, s_details, s_img], wrap=True),
                 ft.ElevatedButton("إضافة خدمة", on_click=add_srv),
-                ft.Divider(),
+                ft.Divider()
                 
                 ft.Text("6. حسابات العملاء", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([c_user, c_pass, c_pid], wrap=True),
@@ -385,10 +391,21 @@ def main(page: ft.Page):
                 page.add(ft.Text("لا توجد خدمات مضافة حالياً.", size=16))
             else:
                 for srv in services:
-                    page.add(ft.Card(margin=ft.margin.only(bottom=10, left=15, right=15),
-                                     content=ft.ListTile(leading=ft.Icon(ft.icons.DESIGN_SERVICES, color=ft.colors.BROWN_700, size=35),
-                                                         title=ft.Text(srv.get('title', ''), weight=ft.FontWeight.BOLD),
-                                                         subtitle=ft.Text(srv.get('details', '')))))
+                    img_url = srv.get('image_url', '')
+                    page.add(
+                        ft.Card(
+                            margin=ft.margin.only(bottom=15, left=15, right=15),
+                            elevation=3,
+                            content=ft.Column([
+                                ft.Image(src=img_url, width=float('inf'), height=180, fit=ft.ImageFit.COVER) if img_url else ft.Container(),
+                                ft.ListTile(
+                                    leading=ft.Icon(ft.icons.DESIGN_SERVICES, color=ft.colors.BROWN_700, size=35),
+                                    title=ft.Text(srv.get('title', ''), weight=ft.FontWeight.BOLD, size=18),
+                                    subtitle=ft.Text(srv.get('details', '')),
+                                )
+                            ])
+                        )
+                    )
             page.add(ft.Container(height=10), ft.ElevatedButton("رجوع للقائمة", on_click=go_to_main_hub))
             page.update()
         except Exception as ex:
