@@ -27,21 +27,11 @@ jobs:
           python3 - << 'EOF'
           import pathlib, re
 
-          candidates = [pathlib.Path("main.py"), pathlib.Path("main.py.py")]
-          existing = [p for p in candidates if p.exists()]
-          chosen = existing[0]
-          for p in existing:
-              txt = p.read_text(encoding="utf-8")
-              if "YOUR_SUPABASE_URL" not in txt:
-                  chosen = p
-                  break
-
+          candidates = [p for p in [pathlib.Path("main.py"), pathlib.Path("main.py.py")] if p.exists()]
+          valid_files = [p for p in candidates if "YOUR_SUPABASE_URL" not in p.read_text(encoding="utf-8")]
+          chosen = valid_files[0] if valid_files else candidates[0]
           code = chosen.read_text(encoding="utf-8")
 
-          # إزالة أي ترقيع سابق لتجنب التكرار
-          code = re.sub(r'import flet as ft[\s\S]*?(?=SUPABASE_URL)', 'import flet as ft\nfrom supabase import create_client, Client\n\n', code, count=1)
-
-          # تحديث الاستدعاءات المباشرة
           code = code.replace("ft.icons.", "ft.Icons.")
           code = code.replace("ft.colors.", "ft.Colors.")
           code = code.replace("ft.ImageFit.", "ft.BoxFit.")
@@ -49,7 +39,6 @@ jobs:
           code = code.replace("width=float('inf')", "width=350")
           code = re.sub(r'ft\.ElevatedButton\(\s*text\s*=\s*', 'ft.ElevatedButton(', code)
 
-          # تحديث طريقة فتح وإغلاق النوافذ المنبثقة (Dialogs) لتعمل على Flet 1.0
           code = re.sub(
               r'page\.dialog\s*=\s*dlg\s*\n\s*dlg\.open\s*=\s*True\s*\n\s*page\.update\(\)',
               '_open_dlg(page, dlg)',
@@ -62,98 +51,96 @@ jobs:
               "_open_dlg(page, ft.SnackBar(ft.Text(msg), bgcolor=color, open=True))"
           )
 
-          shim = '''import flet as ft
-          import inspect
-          from supabase import create_client, Client
+          shim_lines = [
+              "import flet as ft",
+              "import inspect",
+              "from supabase import create_client, Client",
+              "",
+              "if hasattr(ft, 'Icons'): ft.icons = ft.Icons",
+              "if hasattr(ft, 'Colors'): ft.colors = ft.Colors",
+              "if hasattr(ft, 'BoxFit'): ft.ImageFit = ft.BoxFit",
+              "if hasattr(ft, 'Margin'):",
+              "    ft.margin = ft.Margin",
+              "    if not hasattr(ft.margin, 'only'):",
+              "        ft.margin.only = staticmethod(lambda left=0, top=0, right=0, bottom=0: ft.Margin(left=left, top=top, right=right, bottom=bottom))",
+              "    if not hasattr(ft.margin, 'symmetric'):",
+              "        ft.margin.symmetric = staticmethod(lambda vertical=0, horizontal=0: ft.Margin(left=horizontal, top=vertical, right=horizontal, bottom=vertical))",
+              "if hasattr(ft, 'Padding'): ft.padding = ft.Padding",
+              "",
+              "_BtnCls = getattr(ft, 'ElevatedButton', None) or getattr(ft, 'Button', None) or getattr(ft, 'FilledButton', None)",
+              "def _compat_elevated_button(*args, **kwargs):",
+              "    sig = inspect.signature(_BtnCls.__init__).parameters",
+              "    if 'text' in kwargs and 'text' not in sig:",
+              "        t = kwargs.pop('text')",
+              "        if not args:",
+              "            args = (t,)",
+              "    if kwargs.get('width') == float('inf'):",
+              "        kwargs['width'] = 350",
+              "    bg = kwargs.get('bgcolor')",
+              "    fg = kwargs.get('color')",
+              "    if ('bgcolor' not in sig or 'color' not in sig) and hasattr(ft, 'ButtonStyle'):",
+              "        kwargs.pop('bgcolor', None)",
+              "        kwargs.pop('color', None)",
+              "        kwargs['style'] = ft.ButtonStyle(bgcolor=bg, color=fg)",
+              "    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}",
+              "    return _BtnCls(*args, **valid)",
+              "ft.ElevatedButton = _compat_elevated_button",
+              "",
+              "_OrigTF = ft.TextField",
+              "def _compat_textfield(*args, **kwargs):",
+              "    sig = inspect.signature(_OrigTF.__init__).parameters",
+              "    if 'icon' in kwargs and 'icon' not in sig and 'prefix_icon' in sig:",
+              "        kwargs['prefix_icon'] = kwargs.pop('icon')",
+              "    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}",
+              "    return _OrigTF(*args, **valid)",
+              "ft.TextField = _compat_textfield",
+              "",
+              "_OrigImg = ft.Image",
+              "def _compat_image(*args, **kwargs):",
+              "    sig = inspect.signature(_OrigImg.__init__).parameters",
+              "    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}",
+              "    return _OrigImg(*args, **valid)",
+              "ft.Image = _compat_image",
+              "",
+              "def _open_dlg(page, dlg):",
+              "    page.dialog = dlg",
+              "    dlg.open = True",
+              "    for m in ('show_dialog', 'open'):",
+              "        if hasattr(page, m):",
+              "            try:",
+              "                getattr(page, m)(dlg)",
+              "                return",
+              "            except Exception:",
+              "                pass",
+              "    if dlg not in page.overlay:",
+              "        page.overlay.append(dlg)",
+              "    page.update()",
+              "",
+              "def _close_dlg(page, dlg=None):",
+              "    target = dlg or getattr(page, 'dialog', None)",
+              "    if target:",
+              "        target.open = False",
+              "    for m in ('pop_dialog', 'close'):",
+              "        if hasattr(page, m):",
+              "            try:",
+              "                getattr(page, m)() if m == 'pop_dialog' else getattr(page, m)(target)",
+              "                return",
+              "            except Exception:",
+              "                pass",
+              "    page.update()",
+              "",
+              "if not hasattr(ft, 'app') and hasattr(ft, 'run'):",
+              "    ft.app = lambda target, **k: ft.run(target)",
+              "",
+              ""
+          ]
 
-          # 1. توافق الأسماء والأيقونات والألوان والهوامش في Flet 1.0
-          if hasattr(ft, "Icons"): ft.icons = ft.Icons
-          if hasattr(ft, "Colors"): ft.colors = ft.Colors
-          if hasattr(ft, "BoxFit"): ft.ImageFit = ft.BoxFit
-          if hasattr(ft, "Margin"):
-              ft.margin = ft.Margin
-              if not hasattr(ft.margin, "only"):
-                  ft.margin.only = staticmethod(lambda left=0, top=0, right=0, bottom=0: ft.Margin(left=left, top=top, right=right, bottom=bottom))
-              if not hasattr(ft.margin, "symmetric"):
-                  ft.margin.symmetric = staticmethod(lambda vertical=0, horizontal=0: ft.Margin(left=horizontal, top=vertical, right=horizontal, bottom=vertical))
-          if hasattr(ft, "Padding"):
-              ft.padding = ft.Padding
+          shim_clean = "\n".join(shim_lines)
+          code = re.sub(r'import flet as ft[\s\S]*?(?=SUPABASE_URL)', lambda _: shim_clean, code, count=1)
 
-          # 2. توافق زر ElevatedButton (الذي تحول إلى Button في Flet 1.0)
-          _BtnCls = getattr(ft, "ElevatedButton", None) or getattr(ft, "Button", None) or getattr(ft, "FilledButton", None)
-          def _compat_elevated_button(*args, **kwargs):
-              sig = inspect.signature(_BtnCls.__init__).parameters
-              if "text" in kwargs and "text" not in sig:
-                  t = kwargs.pop("text")
-                  if not args:
-                      args = (t,)
-              if kwargs.get("width") == float("inf"):
-                  kwargs["width"] = 350
-              bg = kwargs.get("bgcolor")
-              fg = kwargs.get("color")
-              if ("bgcolor" not in sig or "color" not in sig) and hasattr(ft, "ButtonStyle"):
-                  kwargs.pop("bgcolor", None)
-                  kwargs.pop("color", None)
-                  kwargs["style"] = ft.ButtonStyle(bgcolor=bg, color=fg)
-              valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}
-              return _BtnCls(*args, **valid)
-          ft.ElevatedButton = _compat_elevated_button
-
-          # 3. توافق TextField مع الأيقونات
-          _OrigTF = ft.TextField
-          def _compat_textfield(*args, **kwargs):
-              sig = inspect.signature(_OrigTF.__init__).parameters
-              if "icon" in kwargs and "icon" not in sig and "prefix_icon" in sig:
-                  kwargs["prefix_icon"] = kwargs.pop("icon")
-              valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}
-              return _OrigTF(*args, **valid)
-          ft.TextField = _compat_textfield
-
-          # 4. دوال فتح وإغلاق النوافذ المتوافقة مع Flet 1.0
-          def _open_dlg(page, dlg):
-              page.dialog = dlg
-              dlg.open = True
-              for m in ("show_dialog", "open"):
-                  if hasattr(page, m):
-                      try:
-                          getattr(page, m)(dlg)
-                          return
-                      except Exception:
-                          pass
-              if dlg not in page.overlay:
-                  page.overlay.append(dlg)
-              page.update()
-
-          def _close_dlg(page, dlg=None):
-              target = dlg or getattr(page, "dialog", None)
-              if target:
-                  target.open = False
-              if hasattr(page, "pop_dialog"):
-                  try:
-                      page.pop_dialog()
-                      return
-                  except Exception:
-                      pass
-              if hasattr(page, "close") and target:
-                  try:
-                      page.close(target)
-                      return
-                  except Exception:
-                      pass
-              page.update()
-
-          if not hasattr(ft, "app") and hasattr(ft, "run"):
-              ft.app = lambda target, **k: ft.run(target)
-          '''
-
-          shim_clean = "\n".join(line[10:] if line.startswith("          ") else line for line in shim.splitlines()) + "\n\n"
-          code = re.sub(r'import flet as ft\s*\nfrom supabase import create_client, Client\s*\n*', shim_clean, code, count=1)
-
-          if pathlib.Path("main.py.py").exists():
-              pathlib.Path("main.py.py").unlink()
+          pathlib.Path("main.py.py").unlink(missing_ok=True)
           pathlib.Path("main.py").write_text(code, encoding="utf-8")
 
-          # اختبار فعلي لجميع العناصر قبل بناء التطبيق للتأكد من عدم وجود أي خطأ
           compile(code, "main.py", "exec")
           print("All Flet 1.0 patches compiled and verified successfully!")
           EOF
