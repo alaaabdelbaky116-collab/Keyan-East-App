@@ -399,7 +399,7 @@ def main(page: ft.Page):
             page.appbar = ft.AppBar(
                 title=ft.Text(""),
                 actions=[
-                    ft.IconButton(ft.icons.LOCK_PERSON, on_click=show_admin_login_dialog, tooltip="لوحة الإدارة")
+                    ft.IconButton(ft.icons.LOCK, on_click=show_admin_login_dialog, tooltip="لوحة الإدارة")
                 ]
             )
             
