@@ -3,7 +3,7 @@ from supabase import create_client, Client
 
 # ضع الـ URL والـ Key الخاص بمشروعك هنا
 SUPABASE_URL = 'https://paarkycuhrljagdiqkdo.supabase.co'
-SUPABASE_KEY = 'sb_secret_JukbE8tqqpQ6ZINV1PMlYA_mG8oNJRk'
+SUPABASE_KEY = 'sb_publishable_IJDNFFyeIOxYyPXUJFjN4w_l9WIAxOP'
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def main(page: ft.Page):
