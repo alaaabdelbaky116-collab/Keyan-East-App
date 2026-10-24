@@ -12,6 +12,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fix file names and compatibility
+        run: |
+          ls -la
+          if [ -f "main.py.py" ]; then cp "main.py.py" "main.py"; fi
+          if [ ! -f "main.py" ]; then
+            FOUND_PY=$(find . -maxdepth 2 -name "*.py" ! -name "admin_panel.py" | head -n 1)
+            if [ -n "$FOUND_PY" ]; then cp "$FOUND_PY" main.py; fi
+          fi
+          python3 -c 'import pathlib; p = pathlib.Path("main.py"); c = p.read_text(encoding="utf-8"); shim = "import flet as ft\nif not hasattr(ft, \"colors\") and hasattr(ft, \"Colors\"): ft.colors = ft.Colors\nif not hasattr(ft, \"icons\") and hasattr(ft, \"Icons\"): ft.icons = ft.Icons\nif not hasattr(ft, \"app\") and hasattr(ft, \"run\"): ft.app = lambda target, **k: ft.run(target)\n"; p.write_text(c.replace("import flet as ft", shim, 1), encoding="utf-8")'
+          printf "flet\nsupabase\n" > requirements.txt
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -24,12 +40,9 @@ jobs:
           channel: 'stable'
 
       - name: Accept Android Licenses
-        run: yes | flutter doctor --android-licenses
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        run: |
+          set +o pipefail
+          yes | flutter doctor --android-licenses || true
 
       - name: Install dependencies
         run: |
@@ -37,7 +50,9 @@ jobs:
           pip install flet supabase
 
       - name: Build APK
-        run: yes | flet build apk
+        run: |
+          set +o pipefail
+          yes | flet build apk -v
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
