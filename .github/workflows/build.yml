@@ -17,15 +17,45 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Fix file names and compatibility
+      - name: Auto-fix code for Flet 1.0 compatibility
         run: |
-          ls -la
-          if [ -f "main.py.py" ]; then cp "main.py.py" "main.py"; fi
-          if [ ! -f "main.py" ]; then
-            FOUND_PY=$(find . -maxdepth 2 -name "*.py" ! -name "admin_panel.py" | head -n 1)
-            if [ -n "$FOUND_PY" ]; then cp "$FOUND_PY" main.py; fi
-          fi
-          python3 -c 'import pathlib; p = pathlib.Path("main.py"); c = p.read_text(encoding="utf-8"); shim = "import flet as ft\nif not hasattr(ft, \"colors\") and hasattr(ft, \"Colors\"): ft.colors = ft.Colors\nif not hasattr(ft, \"icons\") and hasattr(ft, \"Icons\"): ft.icons = ft.Icons\nif not hasattr(ft, \"app\") and hasattr(ft, \"run\"): ft.app = lambda target, **k: ft.run(target)\n"; p.write_text(c.replace("import flet as ft", shim, 1), encoding="utf-8")'
+          python3 - << 'EOF'
+          import pathlib, re
+
+          # اختيار الملف الذي يحتوي على مفاتيح Supabase الصحيحة
+          candidates = [pathlib.Path("main.py"), pathlib.Path("main.py.py")]
+          existing = [p for p in candidates if p.exists()]
+          chosen = existing[0]
+          for p in existing:
+              txt = p.read_text(encoding="utf-8")
+              if "YOUR_SUPABASE_URL" not in txt:
+                  chosen = p
+                  break
+
+          code = chosen.read_text(encoding="utf-8")
+
+          # تحويل شامل ومباشر لكل الأيقونات والألوان والنوافذ لتعمل مع Flet 1.0.4
+          code = code.replace("ft.icons.", "ft.Icons.")
+          code = code.replace("ft.colors.", "ft.Colors.")
+          code = code.replace("ft.ImageFit.", "ft.BoxFit.")
+          code = code.replace("LOCK_PERSON", "LOCK")
+          code = re.sub(r'ft\.ElevatedButton\(\s*text\s*=\s*', 'ft.ElevatedButton(', code)
+          code = code.replace("page.dialog = dlg", "page.overlay.append(dlg) if dlg not in page.overlay else None; page.dialog = dlg")
+
+          shim = """import flet as ft
+          if hasattr(ft, "Icons"): ft.icons = ft.Icons
+          if hasattr(ft, "Colors"): ft.colors = ft.Colors
+          if hasattr(ft, "BoxFit"): ft.ImageFit = ft.BoxFit
+          if not hasattr(ft, "app") and hasattr(ft, "run"): ft.app = lambda target, **k: ft.run(target)
+          """
+          code = code.replace("import flet as ft", shim, 1)
+
+          # حذف الملف المكرر إن وجد واعتماد main.py فقط
+          if pathlib.Path("main.py.py").exists():
+              pathlib.Path("main.py.py").unlink()
+          pathlib.Path("main.py").write_text(code, encoding="utf-8")
+          print(f"Successfully upgraded {chosen} -> main.py")
+          EOF
           printf "flet\nsupabase\n" > requirements.txt
 
       - name: Setup Java
