@@ -1,17 +1,63 @@
 import flet as ft
+import inspect
 from supabase import create_client, Client
 
 # ==========================================
-# حل جذري لتوافق الأيقونات والألوان والصور مع إصدار الأندرويد الحديث
+# طبقة التوافق الشاملة مع إصدارات Flet الحديثة والقديمة
 # ==========================================
 if hasattr(ft, "Icons"):
     ft.icons = ft.Icons
 if hasattr(ft, "Colors"):
     ft.colors = ft.Colors
-if not hasattr(ft, "ImageFit") and hasattr(ft, "BoxFit"):
+if hasattr(ft, "BoxFit"):
     ft.ImageFit = ft.BoxFit
+if hasattr(ft, "Margin"):
+    ft.margin = ft.Margin
+    if not hasattr(ft.margin, "only"):
+        ft.margin.only = staticmethod(lambda left=0, top=0, right=0, bottom=0: ft.Margin(left=left, top=top, right=right, bottom=bottom))
+    if not hasattr(ft.margin, "symmetric"):
+        ft.margin.symmetric = staticmethod(lambda vertical=0, horizontal=0: ft.Margin(left=horizontal, top=vertical, right=horizontal, bottom=vertical))
+if hasattr(ft, "Padding"):
+    ft.padding = ft.Padding
 
-# ضع الـ URL والـ Key الخاص بمشروعك هنا
+_BtnCls = getattr(ft, "ElevatedButton", None) or getattr(ft, "Button", None) or getattr(ft, "FilledButton", None)
+def _compat_elevated_button(*args, **kwargs):
+    sig = inspect.signature(_BtnCls.__init__).parameters
+    if "text" in kwargs and "text" not in sig:
+        t = kwargs.pop("text")
+        if not args:
+            args = (t,)
+    if kwargs.get("width") == float("inf"):
+        kwargs["width"] = 350
+    bg = kwargs.get("bgcolor")
+    fg = kwargs.get("color")
+    if ("bgcolor" not in sig or "color" not in sig) and hasattr(ft, "ButtonStyle"):
+        kwargs.pop("bgcolor", None)
+        kwargs.pop("color", None)
+        kwargs["style"] = ft.ButtonStyle(bgcolor=bg, color=fg)
+    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}
+    return _BtnCls(*args, **valid)
+ft.ElevatedButton = _compat_elevated_button
+
+_OrigTF = ft.TextField
+def _compat_textfield(*args, **kwargs):
+    sig = inspect.signature(_OrigTF.__init__).parameters
+    if "icon" in kwargs and "icon" not in sig and "prefix_icon" in sig:
+        kwargs["prefix_icon"] = kwargs.pop("icon")
+    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}
+    return _OrigTF(*args, **valid)
+ft.TextField = _compat_textfield
+
+_OrigImg = ft.Image
+def _compat_image(*args, **kwargs):
+    sig = inspect.signature(_OrigImg.__init__).parameters
+    valid = {k: v for k, v in kwargs.items() if k in sig or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values())}
+    return _OrigImg(*args, **valid)
+ft.Image = _compat_image
+
+# ==========================================
+# إعدادات الاتصال بـ Supabase
+# ==========================================
 SUPABASE_URL = 'https://paarkycuhrljagdiqkdo.supabase.co'
 SUPABASE_KEY = 'sb_publishable_IJDNFFyeIOxYyPXUJFjN4w_l9WIAxOP'
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -24,28 +70,36 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
 
     # دوال موحدة لفتح وإغلاق النوافذ والإشعارات في كل الإصدارات
+    def open_dlg(dlg):
+        page.dialog = dlg
+        dlg.open = True
+        for m in ("show_dialog", "open"):
+            if hasattr(page, m):
+                try:
+                    getattr(page, m)(dlg)
+                    return
+                except Exception:
+                    pass
+        if dlg not in page.overlay:
+            page.overlay.append(dlg)
+        page.update()
+
+    def close_dlg(dlg=None):
+        target = dlg or getattr(page, "dialog", None)
+        if target:
+            target.open = False
+        for m in ("pop_dialog", "close"):
+            if hasattr(page, m):
+                try:
+                    getattr(page, m)() if m == "pop_dialog" else getattr(page, m)(target)
+                    return
+                except Exception:
+                    pass
+        page.update()
+
     def show_snack(msg, color=ft.colors.GREEN):
         snack = ft.SnackBar(ft.Text(msg), bgcolor=color, open=True)
-        if hasattr(page, "open"):
-            page.open(snack)
-        else:
-            page.overlay.append(snack)
-            page.update()
-
-    def open_dlg(dlg):
-        if hasattr(page, "open"):
-            page.open(dlg)
-        else:
-            page.dialog = dlg
-            dlg.open = True
-            page.update()
-
-    def close_dlg(dlg):
-        if hasattr(page, "close"):
-            page.close(dlg)
-        else:
-            dlg.open = False
-            page.update()
+        open_dlg(snack)
 
     def show_loading(title="جاري التحميل..."):
         page.clean()
@@ -63,8 +117,8 @@ def main(page: ft.Page):
     def load_admin_panel():
         page.clean()
         page.appbar = ft.AppBar(
-            title=ft.Text("لوحة تحكم الإدارة (Keyan-East)"), 
-            bgcolor=ft.colors.RED_900, 
+            title=ft.Text("لوحة تحكم الإدارة (Keyan-East)"),
+            bgcolor=ft.colors.RED_900,
             color=ft.colors.WHITE,
             leading=ft.IconButton(ft.icons.ARROW_BACK, on_click=lambda _: load_intro_screen(), icon_color=ft.colors.WHITE)
         )
@@ -74,11 +128,15 @@ def main(page: ft.Page):
         about_text_field = ft.TextField(label="وصف الشركة", multiline=True, width=600)
         def update_company(e):
             try:
-                supabase.table("company_info").insert({"logo_url": logo_url_field.value, "about_text": about_text_field.value}).execute()
+                supabase.table("company_info").insert({
+                    "logo_url": logo_url_field.value,
+                    "about_text": about_text_field.value
+                }).execute()
                 show_snack("تم تحديث بيانات الشركة!")
                 logo_url_field.value = about_text_field.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 2. المؤسسين
         f_name_field = ft.TextField(label="اسم المؤسس", width=300)
@@ -86,11 +144,16 @@ def main(page: ft.Page):
         f_bio_field = ft.TextField(label="نبذة تعريفية", width=600, multiline=True)
         def add_founder(e):
             try:
-                supabase.table("founders").insert({"name": f_name_field.value, "role": f_role_field.value, "bio": f_bio_field.value}).execute()
+                supabase.table("founders").insert({
+                    "name": f_name_field.value,
+                    "role": f_role_field.value,
+                    "bio": f_bio_field.value
+                }).execute()
                 show_snack("تم إضافة المؤسس!")
                 f_name_field.value = f_role_field.value = f_bio_field.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 3. مشاريع حالية
         p_id = ft.TextField(label="كود المشروع", width=200)
@@ -103,13 +166,19 @@ def main(page: ft.Page):
         def add_curr_proj(e):
             try:
                 supabase.table("projects").insert({
-                    "project_id": p_id.value, "name": p_name.value, "location": p_loc.value,
-                    "progress": float(p_prog.value)/100, "phase": p_phase.value,
-                    "description": p_desc.value, "image_url": p_img.value
+                    "project_id": p_id.value,
+                    "name": p_name.value,
+                    "location": p_loc.value,
+                    "progress": float(p_prog.value) / 100,
+                    "phase": p_phase.value,
+                    "description": p_desc.value,
+                    "image_url": p_img.value
                 }).execute()
                 show_snack("تم إضافة المشروع الحالي!")
+                p_id.value = p_name.value = p_loc.value = p_prog.value = p_phase.value = p_desc.value = p_img.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 4. مشاريع مستقبلية
         fp_name = ft.TextField(label="اسم المشروع", width=300)
@@ -118,12 +187,19 @@ def main(page: ft.Page):
         fp_img = ft.TextField(label="رابط الصورة", width=300)
         def add_fut_proj(e):
             try:
-                supabase.table("future_projects").insert({"name": fp_name.value, "date": fp_date.value, "description": fp_desc.value, "image_url": fp_img.value}).execute()
+                supabase.table("future_projects").insert({
+                    "name": fp_name.value,
+                    "date": fp_date.value,
+                    "description": fp_desc.value,
+                    "image_url": fp_img.value
+                }).execute()
                 show_snack("تم إضافة المشروع المستقبلي!")
+                fp_name.value = fp_date.value = fp_desc.value = fp_img.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # 5. خدمات
+        # 5. خدمات (مع رابط الصورة)
         s_title = ft.TextField(label="اسم الخدمة", width=300)
         s_details = ft.TextField(label="تفاصيل الخدمة", width=300, multiline=True)
         s_img = ft.TextField(label="رابط صورة الخدمة (من Storage)", width=300)
@@ -137,7 +213,8 @@ def main(page: ft.Page):
                 show_snack("تم إضافة الخدمة!")
                 s_title.value = s_details.value = s_img.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 6. عملاء
         c_user = ft.TextField(label="اسم المستخدم", width=200)
@@ -145,11 +222,16 @@ def main(page: ft.Page):
         c_pid = ft.TextField(label="كود المشروع", width=200)
         def add_cli(e):
             try:
-                supabase.table("clients").insert({"username": c_user.value, "password": c_pass.value, "project_id": c_pid.value}).execute()
+                supabase.table("clients").insert({
+                    "username": c_user.value,
+                    "password": c_pass.value,
+                    "project_id": c_pid.value
+                }).execute()
                 show_snack("تم إنشاء حساب العميل!")
                 c_user.value = c_pass.value = c_pid.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 7. حذف عميل
         del_c_user = ft.TextField(label="اسم مستخدم العميل المراد حذفه", width=300)
@@ -162,7 +244,8 @@ def main(page: ft.Page):
                     show_snack("لم يتم العثور على العميل!", ft.colors.RED)
                 del_c_user.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         # 8. تغيير باسورد الإدارة
         new_admin_pass = ft.TextField(label="الباسورد الجديد للإدارة", width=300, password=True, can_reveal_password=True)
@@ -172,7 +255,8 @@ def main(page: ft.Page):
                 show_snack("تم تغيير باسورد الإدارة بنجاح!")
                 new_admin_pass.value = ""
                 page.update()
-            except Exception as ex: show_snack(f"خطأ: {ex}", ft.colors.RED)
+            except Exception as ex:
+                show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         page.add(
             ft.Container(padding=20, content=ft.Column([
@@ -180,28 +264,28 @@ def main(page: ft.Page):
                 ft.Row([logo_url_field, about_text_field], wrap=True),
                 ft.ElevatedButton("حفظ بيانات الشركة", on_click=update_company),
                 ft.Divider(),
-                
+
                 ft.Text("2. المؤسسون", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([f_name_field, f_role_field, f_bio_field], wrap=True),
                 ft.ElevatedButton("إضافة مؤسس", on_click=add_founder),
                 ft.Divider(),
-                
+
                 ft.Text("3. مشاريع حالية", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([p_id, p_name, p_loc, p_prog, p_phase], wrap=True),
                 ft.Row([p_desc, p_img], wrap=True),
                 ft.ElevatedButton("إضافة مشروع حالي", on_click=add_curr_proj),
                 ft.Divider(),
-                
+
                 ft.Text("4. مشاريع مستقبلية", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([fp_name, fp_date, fp_desc, fp_img], wrap=True),
                 ft.ElevatedButton("إضافة مستقبلي", on_click=add_fut_proj),
                 ft.Divider(),
-                
+
                 ft.Text("5. الخدمات", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([s_title, s_details, s_img], wrap=True),
                 ft.ElevatedButton("إضافة خدمة", on_click=add_srv),
-                ft.Divider()
-                
+                ft.Divider(),
+
                 ft.Text("6. حسابات العملاء", weight=ft.FontWeight.BOLD, color=ft.colors.RED_900),
                 ft.Row([c_user, c_pass, c_pid], wrap=True),
                 ft.ElevatedButton("إنشاء حساب عميل", on_click=add_cli),
@@ -223,7 +307,7 @@ def main(page: ft.Page):
     def show_admin_login_dialog(e):
         pass_field = ft.TextField(label="كلمة مرور الإدارة", password=True, can_reveal_password=True, width=300)
         err = ft.Text("", color=ft.colors.RED)
-        
+
         def verify(e):
             err.value = "جاري التحقق..."
             page.update()
@@ -269,8 +353,10 @@ def main(page: ft.Page):
                         content=ft.Container(
                             padding=20,
                             content=ft.Column([
-                                ft.Row([ft.Text("نسبة الإنجاز الإجمالية", weight=ft.FontWeight.BOLD, size=16),
-                                        ft.Text(f"{progress_percent}%", weight=ft.FontWeight.BOLD, size=20, color=ft.colors.INDIGO_900)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                ft.Row([
+                                    ft.Text("نسبة الإنجاز الإجمالية", weight=ft.FontWeight.BOLD, size=16),
+                                    ft.Text(f"{progress_percent}%", weight=ft.FontWeight.BOLD, size=20, color=ft.colors.INDIGO_900)
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                                 ft.Container(height=10),
                                 ft.ProgressBar(value=project.get('progress', 0), color=ft.colors.GREEN_700, bgcolor=ft.colors.GREY_300, height=12),
                                 ft.Container(height=15),
@@ -279,16 +365,17 @@ def main(page: ft.Page):
                         )
                     ),
                     ft.Container(height=20),
-                    ft.ElevatedButton("تسجيل خروج والعودة", on_click=lambda _: go_to_main_hub(None), width=float('inf'), bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)
+                    ft.ElevatedButton("تسجيل خروج والعودة", on_click=lambda _: go_to_main_hub(None), width=350, bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)
                 ])
             )
         )
         page.update()
 
     def open_login_dialog(project):
-        user_field = ft.TextField(label="اسم المستخدم", prefix_icon=ft.icons.PERSON)
-        pass_field = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK)
+        user_field = ft.TextField(label="اسم المستخدم", icon=ft.icons.PERSON)
+        pass_field = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, icon=ft.icons.LOCK)
         error_text = ft.Text("", color=ft.colors.RED)
+
         def verify_login(e):
             error_text.value = "جاري التحقق..."
             page.update()
@@ -303,6 +390,7 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_text.value = f"خطأ في الاتصال: {ex}"
                 page.update()
+
         dlg = ft.AlertDialog(
             title=ft.Text(f"دخول - {project.get('name', '')}", size=16),
             content=ft.Column([user_field, pass_field, error_text], tight=True),
@@ -330,7 +418,7 @@ def main(page: ft.Page):
                             margin=ft.margin.only(bottom=15, left=15, right=15),
                             elevation=3,
                             content=ft.Column([
-                                ft.Image(src=img_url, width=float('inf'), height=200, fit=ft.ImageFit.COVER) if img_url else ft.Container(height=10),
+                                ft.Image(src=img_url, width=350, height=200, fit=ft.ImageFit.COVER) if img_url else ft.Container(height=10),
                                 ft.Container(
                                     padding=15,
                                     content=ft.Column([
@@ -338,7 +426,7 @@ def main(page: ft.Page):
                                         ft.Text(f"الموقع: {prj.get('location', '')}", color=ft.colors.GREY_700),
                                         ft.Text(prj.get('description', ''), size=14),
                                         ft.Container(height=10),
-                                        ft.ElevatedButton("دخول المشترك لمتابعة الإنجاز", on_click=lambda e, p=prj: open_login_dialog(p), bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE, width=float('inf'))
+                                        ft.ElevatedButton("دخول المشترك لمتابعة الإنجاز", on_click=lambda e, p=prj: open_login_dialog(p), bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE, width=350)
                                     ])
                                 )
                             ])
@@ -367,9 +455,11 @@ def main(page: ft.Page):
                         ft.Card(
                             margin=ft.margin.only(bottom=15, left=15, right=15),
                             content=ft.Column([
-                                ft.Image(src=img_url, width=float('inf'), height=180, fit=ft.ImageFit.COVER) if img_url else ft.Container(),
-                                ft.ListTile(title=ft.Text(prj.get('name', ''), weight=ft.FontWeight.BOLD, size=18),
-                                            subtitle=ft.Text(f"موعد الطرح: {prj.get('date', '')}\n\n{prj.get('description', '')}"))
+                                ft.Image(src=img_url, width=350, height=180, fit=ft.ImageFit.COVER) if img_url else ft.Container(),
+                                ft.ListTile(
+                                    title=ft.Text(prj.get('name', ''), weight=ft.FontWeight.BOLD, size=18),
+                                    subtitle=ft.Text(f"موعد الطرح: {prj.get('date', '')}\n\n{prj.get('description', '')}")
+                                )
                             ])
                         )
                     )
@@ -397,7 +487,7 @@ def main(page: ft.Page):
                             margin=ft.margin.only(bottom=15, left=15, right=15),
                             elevation=3,
                             content=ft.Column([
-                                ft.Image(src=img_url, width=float('inf'), height=180, fit=ft.ImageFit.COVER) if img_url else ft.Container(),
+                                ft.Image(src=img_url, width=350, height=180, fit=ft.ImageFit.COVER) if img_url else ft.Container(),
                                 ft.ListTile(
                                     leading=ft.Icon(ft.icons.DESIGN_SERVICES, color=ft.colors.BROWN_700, size=35),
                                     title=ft.Text(srv.get('title', ''), weight=ft.FontWeight.BOLD, size=18),
@@ -418,17 +508,26 @@ def main(page: ft.Page):
         page.appbar = ft.AppBar(title=ft.Text("أقسام شركة Keyan-East"), bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE)
         page.add(
             ft.Container(height=10),
-            ft.ListTile(leading=ft.Icon(ft.icons.ENGINEERING, color=ft.colors.INDIGO_900, size=40),
-                        title=ft.Text("المشاريع الحالية", weight=ft.FontWeight.BOLD, size=18),
-                        subtitle=ft.Text("متابعة المشاريع القائمة وصور التنفيذ"), on_click=load_current_projects),
+            ft.ListTile(
+                leading=ft.Icon(ft.icons.ENGINEERING, color=ft.colors.INDIGO_900, size=40),
+                title=ft.Text("المشاريع الحالية", weight=ft.FontWeight.BOLD, size=18),
+                subtitle=ft.Text("متابعة المشاريع القائمة وصور التنفيذ"),
+                on_click=load_current_projects
+            ),
             ft.Divider(),
-            ft.ListTile(leading=ft.Icon(ft.icons.LOCATION_CITY, color=ft.colors.GREEN_700, size=40),
-                        title=ft.Text("المشاريع المستقبلية", weight=ft.FontWeight.BOLD, size=18),
-                        subtitle=ft.Text("أحدث الطروحات والفرص الاستثمارية"), on_click=load_future_projects),
+            ft.ListTile(
+                leading=ft.Icon(ft.icons.LOCATION_CITY, color=ft.colors.GREEN_700, size=40),
+                title=ft.Text("المشاريع المستقبلية", weight=ft.FontWeight.BOLD, size=18),
+                subtitle=ft.Text("أحدث الطروحات والفرص الاستثمارية"),
+                on_click=load_future_projects
+            ),
             ft.Divider(),
-            ft.ListTile(leading=ft.Icon(ft.icons.DESIGN_SERVICES, color=ft.colors.BROWN_700, size=40),
-                        title=ft.Text("خدمات الشركة", weight=ft.FontWeight.BOLD, size=18),
-                        subtitle=ft.Text("التشطيبات • الرسومات الهندسية • الإشراف"), on_click=load_services),
+            ft.ListTile(
+                leading=ft.Icon(ft.icons.DESIGN_SERVICES, color=ft.colors.BROWN_700, size=40),
+                title=ft.Text("خدمات الشركة", weight=ft.FontWeight.BOLD, size=18),
+                subtitle=ft.Text("التشطيبات • الرسومات الهندسية • الإشراف"),
+                on_click=load_services
+            ),
             ft.Container(height=30),
             ft.ElevatedButton("رجوع للشاشة الرئيسية", on_click=lambda _: load_intro_screen())
         )
@@ -441,7 +540,7 @@ def main(page: ft.Page):
             company_data = company_res.data[0] if company_res.data else {}
             founders_res = supabase.table("founders").select("*").execute()
             founders_data = founders_res.data
-            
+
             page.clean()
             page.appbar = ft.AppBar(
                 title=ft.Text(""),
@@ -449,13 +548,13 @@ def main(page: ft.Page):
                     ft.IconButton(ft.icons.LOCK, on_click=show_admin_login_dialog, tooltip="لوحة الإدارة")
                 ]
             )
-            
+
             logo_url = company_data.get("logo_url", "")
             if logo_url:
                 page.add(ft.Container(height=20), ft.Image(src=logo_url, width=250, height=250, fit=ft.ImageFit.CONTAIN))
             else:
                 page.add(ft.Container(height=20), ft.Icon(ft.icons.APARTMENT, size=120, color=ft.colors.INDIGO_900))
-                
+
             page.add(
                 ft.Text("Keyan-East", size=36, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900),
                 ft.Text("للاستثمار والتطوير الهندسي", size=18, color=ft.colors.GREY_700),
@@ -464,26 +563,44 @@ def main(page: ft.Page):
 
             about_text = company_data.get("about_text", "شركة رائدة في المقاولات والتشطيبات الهندسية.")
             page.add(
-                ft.Card(elevation=2, margin=ft.margin.symmetric(horizontal=15),
-                        content=ft.Container(padding=20, content=ft.Column([
+                ft.Card(
+                    elevation=2,
+                    margin=ft.margin.symmetric(horizontal=15),
+                    content=ft.Container(
+                        padding=20,
+                        content=ft.Column([
                             ft.Text("من نحن", weight=ft.FontWeight.BOLD, size=20, color=ft.colors.INDIGO_900),
                             ft.Text(about_text, size=15)
-                        ])))
+                        ])
+                    )
+                )
             )
 
             if founders_data:
                 page.add(ft.Container(height=10), ft.Text("المؤسسون ومجلس الإدارة", size=18, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900))
                 for founder in founders_data:
                     page.add(
-                        ft.Card(margin=ft.margin.symmetric(horizontal=15, vertical=5),
-                                content=ft.ListTile(leading=ft.CircleAvatar(content=ft.Icon(ft.icons.PERSON, color=ft.colors.WHITE), bgcolor=ft.colors.INDIGO_900),
-                                                    title=ft.Text(founder.get('name', ''), weight=ft.FontWeight.BOLD),
-                                                    subtitle=ft.Text(f"{founder.get('role', '')}\n{founder.get('bio', '')}")))
+                        ft.Card(
+                            margin=ft.margin.symmetric(horizontal=15, vertical=5),
+                            content=ft.ListTile(
+                                leading=ft.CircleAvatar(content=ft.Icon(ft.icons.PERSON, color=ft.colors.WHITE), bgcolor=ft.colors.INDIGO_900),
+                                title=ft.Text(founder.get('name', ''), weight=ft.FontWeight.BOLD),
+                                subtitle=ft.Text(f"{founder.get('role', '')}\n{founder.get('bio', '')}")
+                            )
+                        )
                     )
                 page.add(ft.Container(height=10))
 
             page.add(
-                ft.ElevatedButton("استكشف مشاريعنا وخدماتنا", icon=ft.icons.EXPLORE, bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE, on_click=go_to_main_hub, height=55, width=300),
+                ft.ElevatedButton(
+                    "استكشف مشاريعنا وخدماتنا",
+                    icon=ft.icons.EXPLORE,
+                    bgcolor=ft.colors.INDIGO_900,
+                    color=ft.colors.WHITE,
+                    on_click=go_to_main_hub,
+                    height=55,
+                    width=300
+                ),
                 ft.Container(height=40)
             )
             page.update()
