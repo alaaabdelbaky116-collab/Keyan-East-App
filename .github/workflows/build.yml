@@ -17,16 +17,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Ensure main.py, assets, and requirements.txt
+      - name: Prepare files and assets
         run: |
           if [ -f "main.py.py" ] && [ ! -f "main.py" ]; then cp "main.py.py" "main.py"; fi
           rm -f "main.py.py"
           printf "flet\nsupabase\n" > requirements.txt
-          
-          # إنشاء مجلد assets ونقل اللوجو إليه تلقائياً
           mkdir -p assets
           if [ -f "icon.png" ]; then cp "icon.png" "assets/icon.png"; fi
           if [ -f "logo.png" ]; then cp "logo.png" "assets/icon.png"; fi
+          python3 -m py_compile main.py
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -49,10 +48,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install flet supabase
 
-      - name: Build APK with Custom Icon and Name
+      - name: Build APK
         run: |
           set +o pipefail
-          yes | flet build apk --project "Keyan-East" --org "com.keyaneast.app" -v
+          yes | flet build apk -v
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
