@@ -17,15 +17,44 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Prepare files and assets
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet supabase pillow
+
+      - name: Prepare main.py, requirements, and valid PNG icon
         run: |
           if [ -f "main.py.py" ] && [ ! -f "main.py" ]; then cp "main.py.py" "main.py"; fi
           rm -f "main.py.py"
           printf "flet\nsupabase\n" > requirements.txt
-          mkdir -p assets
-          if [ -f "icon.png" ]; then cp "icon.png" "assets/icon.png"; fi
-          if [ -f "logo.png" ]; then cp "logo.png" "assets/icon.png"; fi
-          python3 -m py_compile main.py
+
+          python3 - << 'EOF'
+          import pathlib
+          from PIL import Image
+
+          # 1. تصحيح أي مسافة بادئة زائدة في main.py والتأكد من سلامة الكود
+          p = pathlib.Path("main.py")
+          code = p.read_text(encoding="utf-8")
+          code = code.replace("         dash_items = [", "        dash_items = [")
+          p.write_text(code, encoding="utf-8")
+          compile(code, "main.py", "exec")
+          print("main.py syntax verified successfully!")
+
+          # 2. فحص وتحويل اللوجو إلى PNG قياسي 512x512 لمنع فشل البناء
+          assets_dir = pathlib.Path("assets")
+          assets_dir.mkdir(exist_ok=True)
+          for candidate in ["icon.png", "logo.png", "icon.jpg", "logo.jpg", "assets/icon.png"]:
+              cp = pathlib.Path(candidate)
+              if cp.exists():
+                  try:
+                      img = Image.open(cp).convert("RGBA")
+                      img = img.resize((512, 512))
+                      img.save(assets_dir / "icon.png", format="PNG")
+                      print(f"Converted {candidate} to valid 512x512 assets/icon.png")
+                      break
+                  except Exception as e:
+                      print(f"Skipping invalid image {candidate}: {e}")
+          EOF
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -40,18 +69,11 @@ jobs:
 
       - name: Accept Android Licenses
         run: |
-          set +o pipefail
           yes | flutter doctor --android-licenses || true
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flet supabase
 
       - name: Build APK
         run: |
-          set +o pipefail
-          yes | flet build apk -v
+          flet build apk --yes --project "KeyanEast" --org "com.keyaneast.app" -v || flet build apk --yes -v
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
