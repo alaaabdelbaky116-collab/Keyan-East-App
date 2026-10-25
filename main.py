@@ -136,9 +136,7 @@ def main(page: ft.Page):
 
         controls_list = []
 
-        # --- أقسام خاصة بالإدارة العليا فقط (role == "admin") ---
         if role == "admin":
-            # 1. إعدادات الشركة وشريط الأخبار والتواصل
             logo_url_field = ft.TextField(label="رابط اللوجو", width=300)
             about_text_field = ft.TextField(label="وصف الشركة", multiline=True, width=300)
             ann_field = ft.TextField(label="شريط الأخبار العاجلة (يظهر بأعلى التطبيق)", width=300)
@@ -158,7 +156,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 2. المؤسسون
             f_name = ft.TextField(label="اسم المؤسس", width=250)
             f_role = ft.TextField(label="المسمى الوظيفي", width=250)
             f_bio = ft.TextField(label="نبذة تعريفية", width=300, multiline=True)
@@ -171,7 +168,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 3. إضافة مشروع حالي
             p_id = ft.TextField(label="كود المشروع", width=180)
             p_name = ft.TextField(label="اسم المشروع", width=220)
             p_loc = ft.TextField(label="الموقع", width=200)
@@ -192,7 +188,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 4. تحديث نسبة إنجاز مشروع قائم
             up_pid = ft.TextField(label="كود المشروع المراد تحديثه", width=200)
             up_prog = ft.TextField(label="نسبة الإنجاز الجديدة (0-100)", width=200)
             up_phase = ft.TextField(label="المرحلة الحالية الجديدة", width=250)
@@ -210,7 +205,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 5. إضافة يوميات الموقع بالصور (Timeline)
             tl_pid = ft.TextField(label="كود المشروع", width=180)
             tl_date = ft.TextField(label="التاريخ (مثال: أكتوبر 2026)", width=200)
             tl_title = ft.TextField(label="وصف التطور (مثال: صب سقف الدور الثالث)", width=300)
@@ -229,7 +223,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 6. مشاريع مستقبلية
             fp_name = ft.TextField(label="اسم المشروع", width=250)
             fp_date = ft.TextField(label="موعد الطرح", width=200)
             fp_desc = ft.TextField(label="التفاصيل", width=300, multiline=True)
@@ -246,7 +239,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 7. الخدمات
             s_title = ft.TextField(label="اسم الخدمة", width=250)
             s_details = ft.TextField(label="تفاصيل الخدمة", width=300, multiline=True)
             s_img = ft.TextField(label="رابط صورة الخدمة", width=300)
@@ -298,7 +290,6 @@ def main(page: ft.Page):
                 ft.Divider(),
             ])
 
-        # --- أقسام إدارة العملاء والأقساط (متاحة لخدمة العملاء CS وللأدمن) ---
         c_user = ft.TextField(label="اسم مستخدم العميل", width=200)
         c_pass = ft.TextField(label="كلمة المرور", width=200)
         c_pid = ft.TextField(label="كود المشروع", width=180)
@@ -324,7 +315,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # إضافة قسط للعميل
         ins_user = ft.TextField(label="اسم مستخدم العميل", width=200)
         ins_amount = ft.TextField(label="قيمة القسط (ج.م)", width=200)
         ins_date = ft.TextField(label="تاريخ الاستحقاق (مثال: 2026-12-01)", width=250)
@@ -344,7 +334,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # حذف عميل
         del_c_user = ft.TextField(label="اسم مستخدم العميل المراد حذفه", width=280)
         def delete_cli(e):
             try:
@@ -376,7 +365,6 @@ def main(page: ft.Page):
             ft.Divider(),
         ])
 
-        # عرض طلبات المعاينة والتسعير الواردة من العملاء
         controls_list.append(ft.Text("طلبات المعاينة وتسعير التشطيبات الواردة", weight=ft.FontWeight.BOLD, size=16, color=ft.colors.INDIGO_900))
         try:
             reqs = supabase.table("service_requests").select("*").execute().data
@@ -397,7 +385,6 @@ def main(page: ft.Page):
         except Exception:
             controls_list.append(ft.Text("تأكد من تشغيل كود SQL لجدول service_requests", color=ft.colors.RED))
 
-        # إعدادات كلمات المرور (للإدارة العليا فقط)
         if role == "admin":
             new_admin_pass = ft.TextField(label="باسورد الإدارة العليا الجديد", width=250, password=True, can_reveal_password=True)
             new_cs_pass = ft.TextField(label="باسورد خدمة العملاء الجديد", width=250, password=True, can_reveal_password=True)
@@ -473,7 +460,6 @@ def main(page: ft.Page):
         username = client_row.get('username', '')
         project_id = project.get('project_id', '')
 
-        # جلب الأقساط ويوميات الموقع من Supabase
         try:
             installments = supabase.table("installments").select("*").eq("username", username).execute().data
         except Exception:
@@ -487,12 +473,11 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = ft.AppBar(title=ft.Text(f"مرحباً، {username}"), bgcolor=ft.colors.INDIGO_900, color=ft.colors.WHITE)
 
-         dash_items = [
+        dash_items = [
             ft.Text(project.get('name', ''), size=22, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900),
             ft.Text(f"الموقع: {project.get('location', '')} | كود المشروع: {project_id}", color=ft.colors.GREY_700),
             ft.Divider(height=20),
 
-            # 1. بطاقة نسبة الإنجاز
             ft.Card(
                 elevation=2,
                 content=ft.Container(
@@ -511,7 +496,6 @@ def main(page: ft.Page):
             ),
             ft.Container(height=10),
 
-            # 2. أرشيف العقود والرسومات الهندسية 2D / 3D
             ft.Text("العقود والرسومات الهندسية", size=18, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900),
             ft.Row([
                 ft.ElevatedButton(
@@ -531,7 +515,6 @@ def main(page: ft.Page):
             ], wrap=True),
             ft.Divider(height=25),
 
-            # 3. الموقف المالي وجدول الأقساط
             ft.Text("الموقف المالي وجدول الأقساط", size=18, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900),
             ft.Card(
                 elevation=2,
@@ -572,7 +555,6 @@ def main(page: ft.Page):
 
         dash_items.append(ft.Divider(height=25))
 
-        # 4. يوميات الموقع بالصور (Timeline)
         dash_items.append(ft.Text("يوميات الموقع وتطورات التنفيذ", size=18, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900))
         if not timeline:
             dash_items.append(ft.Text("سيتم رفع صور تطورات المراحل قريباً.", color=ft.colors.GREY_700))
@@ -633,9 +615,6 @@ def main(page: ft.Page):
         )
         open_dlg(dlg)
 
-    # ==========================================
-    # --- حاسبة تكلفة التشطيبات وطلب المعاينة ---
-    # ==========================================
     def load_cost_calculator(e):
         page.clean()
         page.appbar = ft.AppBar(title=ft.Text("حاسبة تكلفة التشطيبات"), bgcolor=ft.colors.TEAL_800, color=ft.colors.WHITE)
@@ -725,9 +704,6 @@ def main(page: ft.Page):
         )
         page.update()
 
-    # ==========================================
-    # --- شاشات المشاريع والخدمات ---
-    # ==========================================
     def load_current_projects(e):
         show_loading("المشاريع الحالية")
         try:
@@ -895,7 +871,6 @@ def main(page: ft.Page):
                 ]
             )
 
-            # شريط الأخبار العاجلة إن وجد
             announcement = company_data.get("announcement", "")
             if announcement:
                 page.add(
@@ -951,7 +926,6 @@ def main(page: ft.Page):
                         )
                     )
 
-            # أزرار التواصل المباشر (واتساب وموقع الشركة)
             wa_url = company_data.get("whatsapp", "")
             maps_url = company_data.get("maps_url", "")
             if wa_url or maps_url:
