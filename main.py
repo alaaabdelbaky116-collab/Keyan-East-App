@@ -123,6 +123,19 @@ def main(page: ft.Page):
     # --- قسم الإدارة وخدمة العملاء (Admin & CS Panel) ---
     # ==========================================
     def load_admin_panel(role="admin"):
+        show_loading("جاري تحميل البيانات والقوائم...")
+
+        # جلب المشاريع والعملاء لتعبئة القوائم المنسدلة والاختيارات تلقائياً
+        try:
+            existing_projects = supabase.table("projects").select("project_id, name").execute().data or []
+        except Exception:
+            existing_projects = []
+
+        try:
+            existing_clients = supabase.table("clients").select("username").execute().data or []
+        except Exception:
+            existing_clients = []
+
         page.clean()
         panel_title = "لوحة الإدارة العليا (Keyan-East)" if role == "admin" else "لوحة خدمة العملاء (Keyan-East)"
         panel_color = ft.colors.RED_900 if role == "admin" else ft.colors.TEAL_800
@@ -133,6 +146,16 @@ def main(page: ft.Page):
             color=ft.colors.WHITE,
             leading=ft.IconButton(ft.icons.ARROW_BACK, on_click=lambda _: load_intro_screen(), icon_color=ft.colors.WHITE)
         )
+
+        # تجهيز خيارات المشاريع للقوائم المنسدلة
+        proj_options = [
+            ft.dropdown.Option(key=p.get("project_id", ""), text=f"{p.get('name', '')} ({p.get('project_id', '')})")
+            for p in existing_projects if p.get("project_id")
+        ]
+
+        # تجهيز خيارات أسماء العملاء (بدون تكرار) للقوائم المنسدلة
+        unique_usernames = sorted(list({c.get("username", "").strip() for c in existing_clients if c.get("username")}))
+        client_options = [ft.dropdown.Option(u) for u in unique_usernames]
 
         controls_list = []
 
@@ -183,42 +206,49 @@ def main(page: ft.Page):
                         "description": p_desc.value, "image_url": p_img.value
                     }).execute()
                     show_snack("تم إضافة المشروع الحالي!")
-                    p_id.value = p_name.value = p_loc.value = p_prog.value = p_phase.value = p_desc.value = p_img.value = ""
-                    page.update()
+                    load_admin_panel(role)
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            up_pid = ft.TextField(label="كود المشروع المراد تحديثه", width=200)
+            # اختيار المشروع من قائمة منسدلة لتحديث نسبته
+            up_pid = ft.Dropdown(label="اختر المشروع المراد تحديثه", width=280, options=proj_options)
             up_prog = ft.TextField(label="نسبة الإنجاز الجديدة (0-100)", width=200)
             up_phase = ft.TextField(label="المرحلة الحالية الجديدة", width=250)
             def update_proj_progress(e):
+                if not up_pid.value:
+                    show_snack("يرجى اختيار المشروع أولاً!", ft.colors.RED)
+                    return
                 try:
                     data = {}
                     if up_prog.value.strip():
                         data["progress"] = float(up_prog.value.strip()) / 100
                     if up_phase.value.strip():
                         data["phase"] = up_phase.value.strip()
-                    supabase.table("projects").update(data).eq("project_id", up_pid.value.strip()).execute()
+                    supabase.table("projects").update(data).eq("project_id", up_pid.value).execute()
                     show_snack("تم تحديث نسبة إنجاز المشروع بنجاح!")
-                    up_pid.value = up_prog.value = up_phase.value = ""
+                    up_prog.value = up_phase.value = ""
                     page.update()
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            tl_pid = ft.TextField(label="كود المشروع", width=180)
+            # اختيار المشروع من قائمة منسدلة لإضافة يوميات الموقع
+            tl_pid = ft.Dropdown(label="اختر المشروع", width=280, options=proj_options)
             tl_date = ft.TextField(label="التاريخ (مثال: أكتوبر 2026)", width=200)
             tl_title = ft.TextField(label="وصف التطور (مثال: صب سقف الدور الثالث)", width=300)
             tl_img = ft.TextField(label="رابط صورة الموقع", width=300)
             def add_timeline_update(e):
+                if not tl_pid.value:
+                    show_snack("يرجى اختيار المشروع أولاً!", ft.colors.RED)
+                    return
                 try:
                     supabase.table("project_updates").insert({
-                        "project_id": tl_pid.value.strip(),
+                        "project_id": tl_pid.value,
                         "update_date": tl_date.value,
                         "title": tl_title.value,
                         "image_url": tl_img.value
                     }).execute()
                     show_snack("تم نشر التطور الجديد في يوميات المشروع!")
-                    tl_pid.value = tl_date.value = tl_title.value = tl_img.value = ""
+                    tl_date.value = tl_title.value = tl_img.value = ""
                     page.update()
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
@@ -290,66 +320,95 @@ def main(page: ft.Page):
                 ft.Divider(),
             ])
 
+        # --- قسم تسجيل العملاء (مع مربعات اختيار المشاريع Checkboxes) ---
         c_user = ft.TextField(label="اسم مستخدم العميل", width=200)
         c_pass = ft.TextField(label="كلمة المرور", width=200)
-        c_pid = ft.TextField(label="كود المشروع", width=180)
         c_total = ft.TextField(label="إجمالي قيمة الوحدة (ج.م)", width=220)
         c_paid = ft.TextField(label="إجمالي المدفوع (ج.م)", width=220)
         c_contract = ft.TextField(label="رابط ملف العقد (PDF/صورة)", width=300)
         c_drawings = ft.TextField(label="رابط الرسومات الهندسية 2D/3D", width=300)
 
+        project_checkboxes = []
+        for prj in existing_projects:
+            pid = prj.get("project_id", "")
+            pname = prj.get("name", "")
+            if pid:
+                cb = ft.Checkbox(label=f"{pname} ({pid})", value=False, data=pid)
+                project_checkboxes.append(cb)
+
         def add_cli(e):
+            selected_pids = [cb.data for cb in project_checkboxes if cb.value]
+            if not c_user.value.strip() or not c_pass.value.strip():
+                show_snack("يرجى إدخال اسم المستخدم وكلمة المرور!", ft.colors.RED)
+                return
+            if not selected_pids:
+                show_snack("يرجى تحديد (عمل مارك على) مشروع واحد على الأقل للعميل!", ft.colors.RED)
+                return
             try:
+                # حفظ الأكواد المختارة مفصولة بفاصلة لدعم اشتراك العميل في أكثر من مشروع
                 supabase.table("clients").insert({
                     "username": c_user.value.strip(),
                     "password": c_pass.value.strip(),
-                    "project_id": c_pid.value.strip(),
+                    "project_id": ",".join(selected_pids),
                     "total_price": c_total.value.strip() or "0",
                     "paid_amount": c_paid.value.strip() or "0",
                     "contract_url": c_contract.value.strip(),
                     "drawings_url": c_drawings.value.strip()
                 }).execute()
-                show_snack("تم إنشاء حساب العميل وربط العقود والرسومات!")
-                c_user.value = c_pass.value = c_pid.value = c_total.value = c_paid.value = c_contract.value = c_drawings.value = ""
-                page.update()
+                show_snack("تم إنشاء حساب العميل وربطه بالمشاريع المحددة!")
+                load_admin_panel(role)
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        ins_user = ft.TextField(label="اسم مستخدم العميل", width=200)
+        # --- قسم إضافة قسط (مع قائمة منسدلة بأسماء العملاء المسجلين) ---
+        ins_user = ft.Dropdown(label="اختر اسم العميل", width=260, options=client_options)
         ins_amount = ft.TextField(label="قيمة القسط (ج.م)", width=200)
         ins_date = ft.TextField(label="تاريخ الاستحقاق (مثال: 2026-12-01)", width=250)
-        ins_status = ft.TextField(label="الحالة (اكتب: مستحق أو مدفوع)", value="مستحق", width=220)
+        ins_status = ft.Dropdown(
+            label="حالة القسط",
+            width=180,
+            value="مستحق",
+            options=[ft.dropdown.Option("مستحق"), ft.dropdown.Option("مدفوع")]
+        )
 
         def add_installment(e):
+            if not ins_user.value:
+                show_snack("يرجى اختيار اسم العميل من القائمة!", ft.colors.RED)
+                return
             try:
                 supabase.table("installments").insert({
-                    "username": ins_user.value.strip(),
+                    "username": ins_user.value,
                     "amount": ins_amount.value.strip(),
                     "due_date": ins_date.value.strip(),
-                    "status": ins_status.value.strip() or "مستحق"
+                    "status": ins_status.value or "مستحق"
                 }).execute()
-                show_snack("تم تسجيل القسط للعميل بنجاح!")
+                show_snack(f"تم تسجيل القسط للعميل ({ins_user.value}) بنجاح!")
                 ins_amount.value = ins_date.value = ""
                 page.update()
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        del_c_user = ft.TextField(label="اسم مستخدم العميل المراد حذفه", width=280)
+        # --- قسم حذف عميل (بقائمة منسدلة أيضاً) ---
+        del_c_user = ft.Dropdown(label="اختر العميل المراد حذفه", width=280, options=client_options)
         def delete_cli(e):
+            if not del_c_user.value:
+                show_snack("يرجى اختيار العميل أولاً!", ft.colors.RED)
+                return
             try:
-                res = supabase.table("clients").delete().eq("username", del_c_user.value.strip()).execute()
+                res = supabase.table("clients").delete().eq("username", del_c_user.value).execute()
                 if res.data:
                     show_snack("تم حذف العميل بنجاح!")
+                    load_admin_panel(role)
                 else:
                     show_snack("لم يتم العثور على العميل!", ft.colors.RED)
-                del_c_user.value = ""
-                page.update()
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
         controls_list.extend([
             ft.Text("إدارة حسابات العملاء والعقود والرسومات", weight=ft.FontWeight.BOLD, size=16, color=ft.colors.TEAL_900),
-            ft.Row([c_user, c_pass, c_pid, c_total, c_paid], wrap=True),
+            ft.Row([c_user, c_pass, c_total, c_paid], wrap=True),
+            ft.Text("حدد المشاريع المشترك بها العميل (يمكنك اختيار مشروع أو أكثر):", weight=ft.FontWeight.BOLD, size=14, color=ft.colors.INDIGO_900),
+            ft.Column(project_checkboxes) if project_checkboxes else ft.Text("لا توجد مشاريع مضافة بعد. أضف مشروعاً أولاً ليظهر هنا.", color=ft.colors.RED),
             ft.Row([c_contract, c_drawings], wrap=True),
             ft.ElevatedButton("إنشاء حساب عميل متكامل", on_click=add_cli, bgcolor=ft.colors.TEAL_800, color=ft.colors.WHITE),
             ft.Divider(),
@@ -594,12 +653,20 @@ def main(page: ft.Page):
             error_text.value = "جاري التحقق..."
             page.update()
             try:
-                res = supabase.table("clients").select("*").eq("username", user_field.value.strip()).eq("password", pass_field.value.strip()).eq("project_id", project['project_id']).execute()
-                if res.data and len(res.data) > 0:
+                res = supabase.table("clients").select("*").eq("username", user_field.value.strip()).eq("password", pass_field.value.strip()).execute()
+                matched_client = None
+                target_pid = str(project.get("project_id", "")).strip()
+                for row in (res.data or []):
+                    client_pids = [p.strip() for p in str(row.get("project_id", "")).split(",") if p.strip()]
+                    if target_pid in client_pids:
+                        matched_client = row
+                        break
+
+                if matched_client:
                     close_dlg(dlg)
-                    show_project_dashboard(project, res.data[0])
+                    show_project_dashboard(project, matched_client)
                 else:
-                    error_text.value = "البيانات غير صحيحة"
+                    error_text.value = "البيانات غير صحيحة أو غير مشترك بهذا المشروع"
                     page.update()
             except Exception as ex:
                 error_text.value = f"خطأ في الاتصال: {ex}"
