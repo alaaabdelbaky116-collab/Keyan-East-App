@@ -201,12 +201,11 @@ def main(page: ft.Page):
             leading=ft.IconButton(ft.icons.ARROW_BACK, on_click=lambda _: back_callback(), icon_color=ft.colors.WHITE)
         )
 
-        # تجهيز نص التقرير الرسمي للمشاركة السريعة عبر واتساب
         text_lines = [
             "==================================",
             "🏢 شركة Keyan-East",
             "لمبادرات اتحاد الملاك والإشراف الهندسي",
-            f"📄 كشف حساب وتقرير هندسي رسمي",
+            "📄 كشف حساب وتقرير هندسي رسمي",
             f"📅 تاريخ الإصدار: {today_str}",
             "==================================",
             f"👤 اسم المالك: {username}",
@@ -238,7 +237,6 @@ def main(page: ft.Page):
         text_lines.append("==================================")
         text_report = "\n".join(text_lines)
 
-        # دالة توليد ورفع ملف التقرير القابل للطباعة والحفظ كـ PDF
         def download_printable_pdf(e):
             try:
                 rows_ins = "".join([
@@ -310,7 +308,7 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"تم تجهيز التقرير، يمكنك نسخه أو التأكد من تفعيل Storage: {ex}", ft.colors.ORANGE_800)
 
-        # بناء تصميم الورقة الرسمية داخل التطبيق
+        # بناء تصميم الورقة الرسمية داخل التطبيق بدون استخدام ft.border.only
         ins_rows_ui = []
         for ins in installments:
             is_paid = "مدفوع" in ins.get("status", "")
@@ -327,6 +325,17 @@ def main(page: ft.Page):
                     ft.Divider(height=1, color=ft.colors.GREY_300)
                 ], spacing=0)
             )
+
+        rm_rows_ui = []
+        for st in roadmap:
+            rm_rows_ui.append(
+                ft.Container(
+                    padding=6,
+                    content=ft.Row([
+                        ft.Text(st.get("stage_name", ""), size=13, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"{st.get('status', '')} ({st.get('expected_date', '')})", size=12, color=ft.colors.INDIGO_900)
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                )
             )
 
         page.add(
@@ -350,7 +359,6 @@ def main(page: ft.Page):
                         )
                     ], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
 
-                    # الورقة الرسمية الموثقة
                     ft.Card(
                         elevation=4,
                         content=ft.Container(
@@ -477,7 +485,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 3. إضافة مشروع حالي (مع تاريخ التسليم للعداد التنازلي)
             p_id = ft.TextField(label="كود المشروع", width=180)
             p_name = ft.TextField(label="اسم المشروع", width=220)
             p_loc = ft.TextField(label="الموقع", width=200)
@@ -499,7 +506,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 4. تحديث مشروع قائم (النسبة + المرحلة + تاريخ التسليم)
             up_pid = ft.Dropdown(label="اختر المشروع المراد تحديثه", width=280, options=proj_options)
             up_prog = ft.TextField(label="نسبة الإنجاز الجديدة (0-100)", width=200)
             up_phase = ft.TextField(label="المرحلة الحالية الجديدة", width=240)
@@ -523,7 +529,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 5. إدارة الجدول الزمني التفاعلي للمشروع (Project Roadmap)
             rm_pid = ft.Dropdown(label="اختر المشروع", width=260, options=proj_options)
             rm_stage = ft.Dropdown(
                 label="اختر المرحلة الهندسية",
@@ -590,7 +595,6 @@ def main(page: ft.Page):
                 except Exception as ex:
                     show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-            # 6. يوميات الموقع بالصور (Timeline)
             tl_pid = ft.Dropdown(label="اختر المشروع", width=280, options=proj_options)
             tl_date = ft.TextField(label="التاريخ (مثال: نوفمبر 2026)", width=200)
             tl_title = ft.TextField(label="وصف التطور (مثال: صب سقف الدور الثالث)", width=300)
@@ -685,7 +689,6 @@ def main(page: ft.Page):
                 ft.Divider(),
             ])
 
-        # --- قسم تسجيل الملاك (مع مربعات اختيار المشاريع Checkboxes) ---
         c_user = ft.TextField(label="اسم المالك (Username)", width=200)
         c_pass = ft.TextField(label="كلمة المرور", width=200)
         c_total = ft.TextField(label="إجمالي تكلفة الوحدة (ج.م)", width=220)
@@ -724,7 +727,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # --- قسم إضافة قسط (مع قائمة منسدلة بأسماء الملاك) ---
         ins_user = ft.Dropdown(label="اختر اسم المالك", width=260, options=client_options)
         ins_amount = ft.TextField(label="قيمة الدفعة / القسط (ج.م)", width=200)
         ins_date = ft.TextField(label="تاريخ الاستحقاق (مثال: 2026-12-01)", width=250)
@@ -752,7 +754,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # --- إصدار كشف حساب PDF لأي مالك من داخل لوحة الإدارة ---
         rep_user = ft.Dropdown(label="اختر المالك لإصدار كشف حسابه", width=280, options=client_options)
         def admin_generate_statement(e):
             if not rep_user.value:
@@ -773,7 +774,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_snack(f"خطأ: {ex}", ft.colors.RED)
 
-        # --- قسم حذف مالك ---
         del_c_user = ft.Dropdown(label="اختر المالك المراد حذفه", width=280, options=client_options)
         def delete_cli(e):
             if not del_c_user.value:
@@ -937,7 +937,6 @@ def main(page: ft.Page):
             ft.Text(f"الموقع: {project.get('location', '')} | كود المشروع: {project_id}", color=ft.colors.GREY_700),
             ft.Container(height=10),
 
-            # زر إصدار كشف الحساب والتقرير الهندسي PDF بضغطة زر (ميزة رقم 5)
             ft.ElevatedButton(
                 "إصدار كشف حساب وتقرير هندسي رسمي (PDF)",
                 icon=ft.icons.PICTURE_AS_PDF,
@@ -952,7 +951,6 @@ def main(page: ft.Page):
             ),
             ft.Container(height=10),
 
-            # كارت العداد التنازلي للتسليم ونسبة الإنجاز (ميزة رقم 1)
             ft.Card(
                 elevation=3,
                 content=ft.Container(
@@ -984,7 +982,6 @@ def main(page: ft.Page):
             ),
             ft.Divider(height=25),
 
-            # خريطة مراحل المشروع التفاعلية (Project Roadmap - ميزة رقم 1)
             ft.Text("الجدول الزمني وخريطة مراحل المشروع", size=18, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900),
         ]
 
