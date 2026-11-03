@@ -20,6 +20,12 @@ if hasattr(ft, "Margin"):
         ft.margin.symmetric = staticmethod(lambda vertical=0, horizontal=0: ft.Margin(left=horizontal, top=vertical, right=horizontal, bottom=vertical))
 if hasattr(ft, "Padding"):
     ft.padding = ft.Padding
+if hasattr(ft, "Border"):
+    ft.border = ft.Border
+    if not hasattr(ft.border, "only"):
+        ft.border.only = staticmethod(lambda left=None, top=None, right=None, bottom=None: ft.Border(left=left, top=top, right=right, bottom=bottom))
+    if hasattr(ft, "BorderSide") and not hasattr(ft.border, "BorderSide"):
+        ft.border.BorderSide = ft.BorderSide
 
 _BtnCls = getattr(ft, "ElevatedButton", None) or getattr(ft, "Button", None) or getattr(ft, "FilledButton", None)
 def _compat_elevated_button(*args, **kwargs):
@@ -309,27 +315,18 @@ def main(page: ft.Page):
         for ins in installments:
             is_paid = "مدفوع" in ins.get("status", "")
             ins_rows_ui.append(
-                ft.Container(
-                    padding=8,
-                    border=ft.border.only(bottom=ft.border.BorderSide(1, ft.colors.GREY_300)),
-                    content=ft.Row([
-                        ft.Text(f"{ins.get('amount', '')} ج.م", weight=ft.FontWeight.BOLD, size=13),
-                        ft.Text(f"{ins.get('due_date', '')}", size=13),
-                        ft.Text(ins.get("status", ""), color=ft.colors.GREEN_700 if is_paid else ft.colors.ORANGE_800, weight=ft.FontWeight.BOLD, size=13)
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                )
+                ft.Column([
+                    ft.Container(
+                        padding=8,
+                        content=ft.Row([
+                            ft.Text(f"{ins.get('amount', '')} ج.م", weight=ft.FontWeight.BOLD, size=13),
+                            ft.Text(f"{ins.get('due_date', '')}", size=13),
+                            ft.Text(ins.get("status", ""), color=ft.colors.GREEN_700 if is_paid else ft.colors.ORANGE_800, weight=ft.FontWeight.BOLD, size=13)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    ),
+                    ft.Divider(height=1, color=ft.colors.GREY_300)
+                ], spacing=0)
             )
-
-        rm_rows_ui = []
-        for st in roadmap:
-            rm_rows_ui.append(
-                ft.Container(
-                    padding=6,
-                    content=ft.Row([
-                        ft.Text(st.get("stage_name", ""), size=13, weight=ft.FontWeight.BOLD),
-                        ft.Text(f"{st.get('status', '')} ({st.get('expected_date', '')})", size=12, color=ft.colors.INDIGO_900)
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                )
             )
 
         page.add(
